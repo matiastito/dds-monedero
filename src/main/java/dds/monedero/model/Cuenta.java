@@ -1,67 +1,53 @@
 package dds.monedero.model;
 
+import static java.time.LocalDate.now;
+
 import dds.monedero.exceptions.MaximaCantidadDepositosException;
 import dds.monedero.exceptions.MaximoExtraccionDiarioException;
 import dds.monedero.exceptions.MontoNegativoException;
 import dds.monedero.exceptions.SaldoMenorException;
-
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Cuenta {
 
-  private double saldo = 0;
-  private List<Movimiento> movimientos = new ArrayList<>();
+  private int limiteDeExtraccionDiario;
+  private double saldo;
+  private List<Movimiento> movimientos;
 
   public Cuenta() {
     saldo = 0;
+    movimientos = new ArrayList<>();
+    limiteDeExtraccionDiario = 1000;
   }
 
   public Cuenta(double montoInicial) {
     saldo = montoInicial;
-  }
-
-  public void setMovimientos(List<Movimiento> movimientos) {
-    this.movimientos = movimientos;
+    movimientos = new ArrayList<>();
+    limiteDeExtraccionDiario = 1000;
   }
 
   public void poner(double cuanto) {
-    if (cuanto <= 0) {
-      throw new MontoNegativoException(cuanto + ": el monto a ingresar debe ser un valor positivo");
-    }
-
-    if (getMovimientos().stream().filter(movimiento -> movimiento.isDeposito()).count() >= 3) {
-      throw new MaximaCantidadDepositosException("Ya excedio los " + 3 + " depositos diarios");
-    }
-
-    new Movimiento(LocalDate.now(), cuanto, true).agregateA(this);
+    validarMontoPositivo(cuanto);
+    validarSuperoCantidadDepositvosDiarios(3);
+    new Deposito(now(), cuanto).agregateA(this);
   }
 
   public void sacar(double cuanto) {
-    if (cuanto <= 0) {
-      throw new MontoNegativoException(cuanto + ": el monto a ingresar debe ser un valor positivo");
-    }
-    if (getSaldo() - cuanto < 0) {
-      throw new SaldoMenorException("No puede sacar mas de " + getSaldo() + " $");
-    }
-    double montoExtraidoHoy = getMontoExtraidoA(LocalDate.now());
-    double limite = 1000 - montoExtraidoHoy;
-    if (cuanto > limite) {
-      throw new MaximoExtraccionDiarioException("No puede extraer mas de $ " + 1000
-          + " diarios, límite: " + limite);
-    }
-    new Movimiento(LocalDate.now(), cuanto, false).agregateA(this);
+    validarMontoPositivo(cuanto);
+    validarSaldoSuficiente(cuanto);
+    validarMaximoExtraccioonsDiarias(cuanto);
+    new Extraccion(now(), cuanto).agregateA(this);
   }
 
-  public void agregarMovimiento(LocalDate fecha, double cuanto, boolean esDeposito) {
-    Movimiento movimiento = new Movimiento(fecha, cuanto, esDeposito);
+  public void agregarMovimiento(Movimiento movimiento) {
     movimientos.add(movimiento);
   }
 
   public double getMontoExtraidoA(LocalDate fecha) {
     return getMovimientos().stream()
-        .filter(movimiento -> !movimiento.isDeposito() && movimiento.getFecha().equals(fecha))
+        .filter(movimiento -> movimiento.fueExtraido(fecha))
         .mapToDouble(Movimiento::getMonto)
         .sum();
   }
@@ -76,6 +62,32 @@ public class Cuenta {
 
   public void setSaldo(double saldo) {
     this.saldo = saldo;
+  }
+
+  private void validarMontoPositivo(double cuanto) {
+    if (cuanto <= 0) {
+      throw new MontoNegativoException(cuanto + ": el monto a ingresar debe ser un valor positivo");
+    }
+  }
+
+  private void validarSuperoCantidadDepositvosDiarios(int maxCantidadDepositosDiarios) {
+    if (getMovimientos().stream().filter(Movimiento::isDeposito).count() >= maxCantidadDepositosDiarios) {
+      throw new MaximaCantidadDepositosException("Ya excedio los " + maxCantidadDepositosDiarios + " depositos diarios");
+    }
+  }
+
+  private void validarMaximoExtraccioonsDiarias(double cuanto) {
+    double limite = limiteDeExtraccionDiario - getMontoExtraidoA(now());
+    if (cuanto > limite) {
+      throw new MaximoExtraccionDiarioException("No puede extraer mas de $ " + limiteDeExtraccionDiario
+          + " diarios, límite: " + limite);
+    }
+  }
+
+  private void validarSaldoSuficiente(double cuanto) {
+    if (getSaldo() - cuanto < 0) {
+      throw new SaldoMenorException("No puede sacar mas de " + getSaldo() + " $");
+    }
   }
 
 }
